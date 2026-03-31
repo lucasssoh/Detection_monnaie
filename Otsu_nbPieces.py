@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
  
 #lecture de l'image en niveau de gris
-img = cv.imread('deux_euros.jpg', cv.IMREAD_GRAYSCALE)
+img = cv.imread('1.jpeg', cv.IMREAD_GRAYSCALE)
 
 #convolution pour supprimer le bruit de l'image avant de la mettre en noir et blanc
 img = cv.medianBlur(img,5)
