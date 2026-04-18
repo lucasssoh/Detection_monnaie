@@ -1,159 +1,231 @@
+"""
+preprocessing.py
+----------------
+Pipeline de prétraitement et d'extraction de features.
+
+Chaîne de traitement pour une image :
+    Chargement (PIL → numpy)
+        ↓
+    Lissage gaussien (σ réglable)
+        ↓
+    Seuillage Otsu → image binaire
+        ↓
+    fill_holes (ferme les trous dans les blobs)
+        ↓
+    opening morphologique (supprime le bruit)
+        ↓
+    Extraction de features → vecteur numérique
+
+Les features extraites sont ensuite utilisées par le modèle de régression
+pour prédire le nombre de pièces dans l'image.
+"""
+
 import numpy as np
 from PIL import Image
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter, binary_fill_holes, binary_opening
+
 from otsu import trouver_seuil_otsu
 
-def otsu_segmentation(image_array):
+
+# ──────────────────────────────────────────────────────────────
+# CONSTANTES PAR DÉFAUT (hyperparamètres à régler sur validation)
+# ──────────────────────────────────────────────────────────────
+
+SIGMA_DEFAUT = 2          # Intensité du lissage gaussien
+NOYAU_DEFAUT = 5          # Taille du noyau d'opening morphologique
+SEUIL_TAILLE_REL = 0.2   # Un blob doit faire au moins 20% du plus grand
+
+
+# ──────────────────────────────────────────────────────────────
+# CHARGEMENT
+# ──────────────────────────────────────────────────────────────
+
+def load_image(path: str) -> np.ndarray:
     """
-    Retourne une image binaire après le seuillage (ici on utilise Otsu)
-    image_array : image numpy array en niveau de gris
+    Charge une image depuis le disque et la convertit en niveaux de gris.
+
+    Pourquoi niveaux de gris ?
+    Les pièces sont détectées par leur forme (cercles), pas leur couleur.
+    Réduire à 1 canal simplifie le traitement et rend le seuillage Otsu applicable.
+
+    Retourne : np.ndarray 2D de dtype uint8 (valeurs de 0 à 255)
+    """
+    img = Image.open(path).convert("L")
+    return np.array(img)
+
+
+# ──────────────────────────────────────────────────────────────
+# SEUILLAGE
+# ──────────────────────────────────────────────────────────────
+
+def otsu_segmentation(image_array: np.ndarray) -> np.ndarray:
+    """
+    Applique le seuillage d'Otsu pour binariser l'image.
+
+    L'image binaire résultante :
+        1 (blanc) = zones claires = potentiellement des pièces
+        0 (noir)  = fond sombre
+
+    Note : selon l'éclairage, les pièces peuvent être plus claires
+    ou plus sombres que le fond. Si les résultats sont mauvais,
+    on peut inverser la binarisation (binary = 1 - binary).
+
+    Retourne : np.ndarray 2D de dtype uint8 (valeurs 0 ou 1)
     """
     seuil = trouver_seuil_otsu(image_array)
     binary = (image_array >= seuil).astype(np.uint8)
     return binary
 
-def extract_features(binary_image):
+
+# ──────────────────────────────────────────────────────────────
+# EXTRACTION DE FEATURES
+# ──────────────────────────────────────────────────────────────
+
+def extract_features(binary_image: np.ndarray,
+                     seuil_taille_rel: float = SEUIL_TAILLE_REL) -> list:
     """
-    Extrait des features pour le comptage des pieces.
-    features : les caracteristiques pour definir une piece (c'est une approximation)
-    """
-    """
-    ndimage.label parcourt l'image binaire et regroupe tous les pixels connectés (1) en "blobs" distincts.
-    Chaque blob correspond à un objet séparé (ici, potentiellement une pièce). 
-    La fonction renvoie :
-    - labeled_array : un tableau de la même taille que l'image, où chaque pixel blanc appartient à un blob identifié par un entier unique (1, 2, 3…)
-    - nb_objets : le nombre total de blobs détectés (approximation du nombre de pièces)
-    Exemple :
-    binary_image :
-    0 0 1 1 0
-    0 0 1 1 0
-    1 0 0 0 1
-    Après label :
-    0 0 1 1 0
-    0 0 1 1 0
-    2 0 0 0 3
-    Ici, nb_objets = 3
+    Extrait un vecteur de 5 features à partir de l'image binaire.
+
+    Ces features résument les propriétés géométriques des blobs détectés,
+    et servent d'entrée au modèle de régression.
+
+    Features extraites :
+        [0] nb_pixels_utiles  : somme des pixels des blobs valides
+        [1] nb_objets_valides : nombre de blobs (≈ nombre de pièces)
+        [2] aire_moyenne      : aire moyenne des blobs valides (pixels)
+        [3] aire_std          : écart-type des aires (mesure la régularité)
+        [4] circ_moyenne      : circularité moyenne ∈ [0, 1]
+
+    Paramètres :
+        binary_image      : image binaire (0/1)
+        seuil_taille_rel  : un blob est "valide" si son aire ≥ ce ratio
+                            × l'aire du plus grand blob
+
+    Retourne : liste de 5 floats (le vecteur de features)
+
+    ------------------------------------------------------------------
+    Détail de la circularité :
+        circ = (4π × aire) / périmètre²
+        Un cercle parfait → circ = 1.0
+        Une forme allongée → circ ≈ 0.1-0.3
+    Les pièces étant rondes, on attend circ ≈ 0.7-1.0 pour les vrais blobs.
+    ------------------------------------------------------------------
     """
     labeled_array, nb_objets = ndimage.label(binary_image)
-    
-    if nb_objets > 0:
-        aires_objets = [np.sum(labeled_array == i) for i in range(1, nb_objets + 1)]
-        """
-        Un objet valide doit avoir au moins 20% de la taille de l'objet le plus gros
-        """
-        seuil_taille = np.max(aires_objets) * 0.2
-        aires_valides = [a for a in aires_objets if a > seuil_taille]
-        nb_objets_valides = len(aires_valides)
-        aire_moyenne = np.mean(aires_valides) if nb_objets_valides > 0 else 0
-        nb_pixels_utiles = sum(aires_valides)
 
-        """
-        Calcul de la circularité moyenne des objets valides.
-        La circularité mesure à quel point un blob ressemble à un cercle.
-        
-        Formule : circularité = (4 * pi * aire) / périmètre²
-        
-        - Un cercle parfait donne une circularité de 1.0
-        - Une forme allongée ou irrégulière donne une valeur proche de 0
-        
-        Pour calculer le périmètre, on utilise le filtre de Sobel qui détecte
-        les contours (transitions 0->1 ou 1->0) dans le blob.
-        On compte ensuite le nombre de pixels de contour détectés.
-        
-        Exemple :
-        blob d'une pièce ronde  -> circularité ≈ 0.85~1.0
-        blob d'un artefact fin  -> circularité ≈ 0.1~0.3
-        
-        Cela permet de filtrer les faux positifs qui ne sont pas des pièces rondes.
-        """
-        circularites = []
-        for i in range(1, nb_objets + 1):
-            aire_blob = np.sum(labeled_array == i)
-            if aire_blob > seuil_taille:
-                blob = (labeled_array == i).astype(np.uint8)
-                """
-                ndimage.sobel calcule le gradient (les contours) selon l'axe horizontal (axis=0)
-                et vertical (axis=1). On combine les deux pour obtenir tous les pixels de bord.
-                Un pixel de contour est non nul dans au moins l'un des deux gradients.
-                """
-                contour_h = ndimage.sobel(blob, axis=0)
-                contour_v = ndimage.sobel(blob, axis=1)
-                perimetre = np.sum((contour_h != 0) | (contour_v != 0))
-                if perimetre > 0:
-                    circularite = (4 * np.pi * aire_blob) / (perimetre ** 2)
-                    circularites.append(circularite)
+    # Cas dégénéré : aucun blob détecté
+    if nb_objets == 0:
+        return [0, 0, 0.0, 0.0, 0.0]
 
-        circ_moyenne = np.mean(circularites) if circularites else 0
-        aire_std = np.std(aires_valides) if nb_objets_valides > 0 else 0
+    # Calcul de l'aire de chaque blob
+    aires_objets = [np.sum(labeled_array == i) for i in range(1, nb_objets + 1)]
+    seuil_taille = max(aires_objets) * seuil_taille_rel
+
+    # On ne garde que les blobs assez grands (filtre les artefacts)
+    aires_valides = [a for a in aires_objets if a > seuil_taille]
+    nb_objets_valides = len(aires_valides)
+
+    if nb_objets_valides == 0:
+        return [0, 0, 0.0, 0.0, 0.0]
+
+    aire_moyenne = float(np.mean(aires_valides))
+    aire_std = float(np.std(aires_valides))
+    nb_pixels_utiles = int(sum(aires_valides))
+
+    # Calcul de la circularité de chaque blob valide
+    circularites = []
+    for i in range(1, nb_objets + 1):
+        aire_blob = np.sum(labeled_array == i)
+        if aire_blob <= seuil_taille:
+            continue  # blob trop petit, ignoré
+
+        blob = (labeled_array == i).astype(np.uint8)
+
+        # Périmètre estimé par les gradients de Sobel
+        # (pixels non nuls dans au moins un des deux gradients = pixels de bord)
+        contour_h = ndimage.sobel(blob, axis=0)
+        contour_v = ndimage.sobel(blob, axis=1)
+        perimetre = np.sum((contour_h != 0) | (contour_v != 0))
+
+        if perimetre > 0:
+            circularite = (4 * np.pi * aire_blob) / (perimetre ** 2)
+            circularites.append(circularite)
+
+    circ_moyenne = float(np.mean(circularites)) if circularites else 0.0
 
     return [nb_pixels_utiles, nb_objets_valides, aire_moyenne, aire_std, circ_moyenne]
 
-def load_image(path):
-    """
-    Charge une image en niveau de gris et retourne un tableau numpy
-    """
-    img = Image.open(path).convert("L")
-    return np.array(img)
 
-def preprocess_image(path):
+# ──────────────────────────────────────────────────────────────
+# PIPELINE COMPLET
+# ──────────────────────────────────────────────────────────────
+
+def preprocess_image(path: str,
+                     sigma: float = SIGMA_DEFAUT,
+                     noyau: int = NOYAU_DEFAUT) -> list:
     """
-    Processus de pretraitement complet : chargement -> lissage -> seuillage -> morphologie -> features
+    Pipeline de prétraitement complet pour une image.
+
+    Étapes :
+        1. Chargement en niveaux de gris
+        2. Lissage gaussien (paramètre : sigma)
+        3. Seuillage Otsu → image binaire
+        4. Remplissage des trous (binary_fill_holes)
+        5. Opening morphologique (paramètre : noyau)
+        6. Extraction des features
+
+    Paramètres :
+        path  : chemin vers l'image
+        sigma : écart-type du filtre gaussien (réglé sur validation)
+        noyau : taille du carré pour l'opening (réglé sur validation)
+
+    Retourne :
+        liste de 5 features (vecteur d'entrée du modèle)
     """
+    # 1. Chargement
     img_array = load_image(path)
 
-    """
-    Lissage gaussien : on applique un flou gaussien sur l'image avant le seuillage.
-    
-    Pourquoi ? Une image brute contient souvent du bruit (pixels parasites, variations
-    d'éclairage locales). Sans lissage, ces pixels bruités créent de nombreux petits blobs
-    indésirables après seuillage, ce qui fausse le comptage.
-    
-    Le paramètre sigma contrôle l'intensité du flou :
-    - sigma faible (ex: 1) -> léger lissage, conserve les détails fins
-    - sigma élevé (ex: 3+) -> fort lissage, peut fusionner des pièces proches
-    sigma=2 est un bon compromis pour des pièces bien séparées.
-    
-    On convertit en float32 pour le calcul, puis on repasse en uint8 (0-255) pour Otsu.
-    """
-    img_smooth = gaussian_filter(img_array.astype(np.float32), sigma=2)
+    # 2. Lissage gaussien
+    #    Réduit le bruit avant seuillage pour éviter les faux positifs
+    img_smooth = gaussian_filter(img_array.astype(np.float32), sigma=sigma)
     img_smooth = img_smooth.astype(np.uint8)
 
+    # 3. Seuillage Otsu
     binary = otsu_segmentation(img_smooth)
 
-    """
-    Remplissage des trous : binary_fill_holes remplit les pixels noirs (0) complètement
-    entourés par des pixels blancs (1) à l'intérieur d'un blob.
-    
-    Pourquoi ? Une pièce peut avoir des reflets ou zones sombres en son centre,
-    ce qui crée des "trous" dans le blob après seuillage. Ces trous fragmentent
-    la pièce en plusieurs blobs, ce qui fausse le comptage.
-    
-    Exemple :
-    Avant fill_holes :     Après fill_holes :
-    0 1 1 1 0              0 1 1 1 0
-    1 1 0 1 1    ->        1 1 1 1 1
-    1 0 0 0 1              1 1 1 1 1
-    1 1 0 1 1              1 1 1 1 1
-    0 1 1 1 0              0 1 1 1 0
-    """
+    # 4. Remplissage des trous
+    #    Une pièce peut avoir des reflets qui créent des "trous" internes.
+    #    binary_fill_holes les ferme pour que chaque pièce soit un blob continu.
     binary = binary_fill_holes(binary).astype(np.uint8)
 
-    """
-    Ouverture morphologique : binary_opening effectue une érosion suivie d'une dilatation.
-    
-    - Érosion  : réduit chaque blob en rongeant ses bords -> supprime les petits blobs (bruit)
-    - Dilatation : regonfle les blobs restants à leur taille d'origine
-    
-    Résultat : les petits artefacts (poussière, reflets parasites) disparaissent,
-    tandis que les grandes formes (les pièces) sont conservées avec leur forme initiale.
-    
-    La structure définit le "pinceau" utilisé pour l'érosion/dilatation.
-    np.ones((5,5)) = carré 5x5 de 1 -> opération appliquée dans un voisinage 5x5.
-    Un noyau plus grand supprime des objets plus gros mais peut aussi fusionner des pièces proches.
-    """
-    struct = np.ones((5, 5))
+    # 5. Opening morphologique (érosion puis dilatation)
+    #    Supprime les petits artefacts (bruit, poussière) sans déformer
+    #    les grosses formes (les pièces).
+    struct = np.ones((noyau, noyau))
     binary = binary_opening(binary, structure=struct).astype(np.uint8)
 
-    features = extract_features(binary)
-    return features
+    # 6. Extraction des features
+    return extract_features(binary)
+
+
+def preprocess_dataset(image_paths: list,
+                       sigma: float = SIGMA_DEFAUT,
+                       noyau: int = NOYAU_DEFAUT) -> np.ndarray:
+    """
+    Applique preprocess_image à une liste d'images.
+
+    Retourne une matrice X de forme (N, 5) où N = nombre d'images.
+    Chaque ligne est le vecteur de features d'une image.
+
+    Utilisé pour construire les sets train, val et test.
+    """
+    X = []
+    for path in image_paths:
+        try:
+            features = preprocess_image(path, sigma=sigma, noyau=noyau)
+            X.append(features)
+        except Exception as e:
+            print(f"[WARN] Erreur sur {path} : {e}")
+            X.append([0, 0, 0.0, 0.0, 0.0])
+    return np.array(X, dtype=np.float64)
