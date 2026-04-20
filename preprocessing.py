@@ -73,6 +73,7 @@ def otsu_segmentation(image_array: np.ndarray) -> np.ndarray:
 
     Retourne : np.ndarray 2D de dtype uint8 (valeurs 0 ou 1)
     """
+
     seuil = trouver_seuil_otsu(image_array)
     binary = (image_array >= seuil).astype(np.uint8)
     return binary
@@ -82,8 +83,9 @@ def otsu_segmentation(image_array: np.ndarray) -> np.ndarray:
 # EXTRACTION DE FEATURES
 # ──────────────────────────────────────────────────────────────
 
-def extract_features(binary_image: np.ndarray,
-                     seuil_taille_rel: float = SEUIL_TAILLE_REL) -> list:
+def extract_features(
+    binary_image: np.ndarray,
+    seuil_taille_rel: float = SEUIL_TAILLE_REL) -> list:
     """
     Extrait un vecteur de 5 features à partir de l'image binaire.
 
@@ -161,9 +163,10 @@ def extract_features(binary_image: np.ndarray,
 # PIPELINE COMPLET
 # ──────────────────────────────────────────────────────────────
 
-def preprocess_image(path: str,
-                     sigma: float = SIGMA_DEFAUT,
-                     noyau: int = NOYAU_DEFAUT) -> list:
+def preprocess_image(
+    path: str,
+    sigma: float = SIGMA_DEFAUT,
+    noyau: int = NOYAU_DEFAUT) -> list:
     """
     Pipeline de prétraitement complet pour une image.
 
@@ -183,6 +186,7 @@ def preprocess_image(path: str,
     Retourne :
         liste de 5 features (vecteur d'entrée du modèle)
     """
+
     # 1. Chargement
     img_array = load_image(path)
 
@@ -209,9 +213,10 @@ def preprocess_image(path: str,
     return extract_features(binary)
 
 
-def preprocess_dataset(image_paths: list,
-                       sigma: float = SIGMA_DEFAUT,
-                       noyau: int = NOYAU_DEFAUT) -> np.ndarray:
+def preprocess_dataset(
+    image_paths: list,
+    sigma: float = SIGMA_DEFAUT,
+    noyau: int = NOYAU_DEFAUT) -> np.ndarray:
     """
     Applique preprocess_image à une liste d'images.
 
@@ -220,6 +225,7 @@ def preprocess_dataset(image_paths: list,
 
     Utilisé pour construire les sets train, val et test.
     """
+
     X = []
     for path in image_paths:
         try:

@@ -23,19 +23,29 @@ def calculer_histogramme(image: np.ndarray) -> np.ndarray:
     return np.bincount(image.ravel(), minlength=256)
 
 
-def calculer_poids(hist: np.ndarray, debut: int, fin: int, total_pixels: int) -> float:
+def calculer_poids(
+    hist: np.ndarray, 
+    debut: int, 
+    fin: int, 
+    total_pixels: int) -> float:
     """
     Poids d'une classe = proportion de pixels dans [debut, fin].
     w = Σ hist[i] / N   pour i ∈ [debut, fin]
     """
+
     return np.sum(hist[debut:fin + 1]) / total_pixels
 
 
-def calculer_moyenne(hist: np.ndarray, debut: int, fin: int, poids: float) -> float:
+def calculer_moyenne(
+    hist: np.ndarray, 
+    debut: int, 
+    fin: int, 
+    poids: float) -> float:
     """
     Moyenne de l'intensité dans la classe [debut, fin].
     μ = (1 / (w * N)) * Σ i * hist[i]   pour i ∈ [debut, fin]
     """
+
     if poids == 0:
         return 0.0
     intensites = np.arange(debut, fin + 1)
@@ -44,13 +54,17 @@ def calculer_moyenne(hist: np.ndarray, debut: int, fin: int, poids: float) -> fl
     return (somme_ponderee / total_pixels) / poids
 
 
-def calculer_variance(hist: np.ndarray, debut: int, fin: int,
-                      poids: float, moyenne: float) -> float:
+def calculer_variance(
+    hist: np.ndarray, 
+    debut: int, 
+    fin: int,
+    poids: float, moyenne: float) -> float:
     """
     Variance intra-classe pour la classe [debut, fin].
     σ² = Σ (i - μ)² * p(i|classe)   pour i ∈ [debut, fin]
     où p(i|classe) = hist[i] / (N * w)
     """
+
     if poids == 0:
         return 0.0
     intensites = np.arange(debut, fin + 1)
@@ -59,13 +73,17 @@ def calculer_variance(hist: np.ndarray, debut: int, fin: int,
     return np.sum(((intensites - moyenne) ** 2) * probabilites)
 
 
-def evaluer_seuil_intra_classe(hist: np.ndarray, t: int, total_pixels: int) -> float:
+def evaluer_seuil_intra_classe(
+    hist: np.ndarray, 
+    t: int, 
+    total_pixels: int) -> float:
     """
     Calcule la variance intra-classe totale pour un seuil t :
         σ²_intra(t) = w1(t) * σ²1(t) + w2(t) * σ²2(t)
     Classe 1 : pixels d'intensité [0, t-1]  (fond sombre)
     Classe 2 : pixels d'intensité [t, 255]  (objets clairs)
     """
+
     w1 = calculer_poids(hist, 0, t - 1, total_pixels)
     m1 = calculer_moyenne(hist, 0, t - 1, w1)
     v1 = calculer_variance(hist, 0, t - 1, w1, m1)

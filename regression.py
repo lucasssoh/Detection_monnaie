@@ -9,8 +9,8 @@ Pourquoi la régression et pas un simple seuil sur nb_objets_valides ?
   ou quand le fond crée des artefacts.
   La régression combine toutes les features pour corriger ces cas.
 
-Modèles disponibles (tous sans bibliothèques ML lourdes, implémentés à la main) :
-    - RegressionLineaire    : y = w·x + b   (le plus simple, bon point de départ)
+Modèles disponibles 
+    - RegressionLineaire    : y = w·x + b   
     - RegressionPolynomiale : ajoute des termes x², x³… (capture les non-linéarités)
 
 La sélection du meilleur modèle et de ses hyperparamètres se fait
@@ -24,7 +24,9 @@ import numpy as np
 # UTILITAIRES
 # ──────────────────────────────────────────────────────────────
 
-def normaliser(X_train: np.ndarray, X: np.ndarray):
+def normaliser(
+    X_train: np.ndarray, 
+    X: np.ndarray):
     """
     Normalisation min-max calculée sur le train, appliquée partout.
 
@@ -43,6 +45,7 @@ def normaliser(X_train: np.ndarray, X: np.ndarray):
         min_   : vecteur des minima (à stocker pour le déploiement)
         range_ : vecteur des étendues (à stocker pour le déploiement)
     """
+
     min_ = X_train.min(axis=0)
     range_ = X_train.max(axis=0) - X_train.min(axis=0)
     # Évite la division par zéro si une feature est constante
@@ -56,7 +59,9 @@ def ajouter_biais(X: np.ndarray) -> np.ndarray:
     return np.hstack([X, np.ones((X.shape[0], 1))])
 
 
-def etendre_polynomial(X: np.ndarray, degre: int) -> np.ndarray:
+def etendre_polynomial(
+    X: np.ndarray, 
+    degre: int) -> np.ndarray:
     """
     Ajoute des termes polynomiaux jusqu'au degré indiqué.
 
@@ -69,6 +74,7 @@ def etendre_polynomial(X: np.ndarray, degre: int) -> np.ndarray:
     Attention : degré trop élevé → sur-apprentissage (overfitting).
     On règle le degré sur la base de validation.
     """
+
     n, p = X.shape
     colonnes = [X]
     for d in range(2, degre + 1):
@@ -84,7 +90,9 @@ def etendre_polynomial(X: np.ndarray, degre: int) -> np.ndarray:
 # MÉTRIQUES D'ÉVALUATION
 # ──────────────────────────────────────────────────────────────
 
-def mae(y_vrai: np.ndarray, y_pred: np.ndarray) -> float:
+def mae(
+    y_vrai: np.ndarray, 
+    y_pred: np.ndarray) -> float:
     """
     Mean Absolute Error : MAE = (1/N) Σ |y - ŷ|
 
@@ -92,26 +100,37 @@ def mae(y_vrai: np.ndarray, y_pred: np.ndarray) -> float:
     C'est la métrique principale pour ce problème car elle est
     directement interprétable en "nombre de pièces".
     """
+
     return float(np.mean(np.abs(y_vrai - y_pred)))
 
 
-def mse(y_vrai: np.ndarray, y_pred: np.ndarray) -> float:
+def mse(
+    y_vrai: np.ndarray, 
+    y_pred: np.ndarray) -> float:
     """
     Mean Squared Error : MSE = (1/N) Σ (y - ŷ)²
 
     Pénalise plus fortement les grandes erreurs (effet carré).
     Utile pour détecter les "catastrophes" (prédire 10 pièces quand il y en a 2).
     """
+
     return float(np.mean((y_vrai - y_pred) ** 2))
 
 
-def rmse(y_vrai: np.ndarray, y_pred: np.ndarray) -> float:
+def rmse(
+    y_vrai: np.ndarray, 
+    y_pred: np.ndarray) -> float:
     """Root MSE — même unité que y (nb pièces)."""
+
     return float(np.sqrt(mse(y_vrai, y_pred)))
 
 
-def afficher_metriques(y_vrai: np.ndarray, y_pred: np.ndarray, label: str = ""):
+def afficher_metriques(
+    y_vrai: np.ndarray, 
+    y_pred: np.ndarray, 
+    label: str = ""):
     """Affiche MAE, MSE et RMSE pour un set donné."""
+
     print(f"  {label} → MAE={mae(y_vrai, y_pred):.3f}, "
           f"MSE={mse(y_vrai, y_pred):.3f}, "
           f"RMSE={rmse(y_vrai, y_pred):.3f}")
@@ -128,10 +147,6 @@ class RegressionLineaire:
     Apprentissage par la solution analytique des moindres carrés :
         w* = (XᵀX)⁻¹ Xᵀy
 
-    Pas de gradient descent, pas de bibliothèque ML — uniquement numpy.
-
-    Cette solution est optimale au sens des moindres carrés (théorème
-    de Gauss-Markov) : c'est le meilleur estimateur linéaire non biaisé.
 
     Hyperparamètre exposé : aucun (le modèle le plus simple possible).
     """
@@ -141,7 +156,10 @@ class RegressionLineaire:
         self.min_ = None        # Pour la normalisation
         self.range_ = None      # Pour la normalisation
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray):
+    def fit(
+        self, 
+        X_train: np.ndarray, 
+        y_train: np.ndarray):
         """
         Apprentissage sur la base d'entraînement.
 
@@ -151,6 +169,7 @@ class RegressionLineaire:
           3. Résoudre w* = (XᵀX)⁻¹ Xᵀy via np.linalg.lstsq
              (lstsq est plus stable numériquement que l'inverse explicite)
         """
+
         X_norm, self.min_, self.range_ = normaliser(X_train, X_train)
         X_b = ajouter_biais(X_norm)
         # lstsq : résout le système surdéterminé Xw ≈ y au sens des MCO
@@ -163,14 +182,19 @@ class RegressionLineaire:
         On applique la même normalisation que celle calculée sur le train,
         puis on arrondit à l'entier le plus proche (on prédit un nombre de pièces).
         """
+
         X_norm = (X - self.min_) / self.range_
         X_b = ajouter_biais(X_norm)
         y_pred = X_b @ self.poids
         # On arrondit et on force à ≥ 0 (un nb de pièces est positif)
         return np.maximum(0, np.round(y_pred)).astype(int)
 
-    def score(self, X: np.ndarray, y: np.ndarray) -> dict:
+    def score(
+        self, 
+        X: np.ndarray, 
+        y: np.ndarray) -> dict:
         """Retourne un dict de métriques pour ce set."""
+
         y_pred = self.predict(X)
         return {
             "MAE": mae(y, y_pred),
@@ -202,12 +226,16 @@ class RegressionPolynomiale:
         self.degre = degre
         self.modele_lin = RegressionLineaire()
 
-    def fit(self, X_train: np.ndarray, y_train: np.ndarray):
+    def fit(
+        self, 
+        X_train: np.ndarray, 
+        y_train: np.ndarray):
         """
         Apprentissage :
           1. Étendre les features au degré demandé
           2. Appliquer une régression linéaire sur l'espace étendu
         """
+
         X_poly = etendre_polynomial(X_train, self.degre)
         self.modele_lin.fit(X_poly, y_train)
 
