@@ -17,12 +17,15 @@ from collections import defaultdict
 
 def charger_verite_terrain(annotation_dir: str) -> dict:
     """
-    Lit tous les fichiers JSON d'annotations et retourne un dict :
+    Lit tous les fichiers JSON d'annotations au format LabelMe et retourne :
         { nom_image: nb_pieces }
 
-    On cherche dans chaque JSON la clé qui contient le total des pièces.
-    Le format attendu dans chaque JSON est une liste d'annotations,
-    et on compte le nombre d'entrées comme vérité terrain.
+    Format LabelMe : chaque JSON contient une clé "shapes" qui est une liste.
+    Chaque entrée de "shapes" = une pièce annotée (rectangle ou polygone).
+    Donc nb_pieces = len(data["shapes"]).
+
+    On ignore les formes dont le label n'est pas "piece" au cas où
+    d'autres annotations seraient présentes.
     """
     vt = {}
     for fname in os.listdir(annotation_dir):
@@ -32,14 +35,14 @@ def charger_verite_terrain(annotation_dir: str) -> dict:
         with open(fpath, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Le JSON contient une liste d'objets annotés (une entrée = une pièce)
-        # On adapte selon le format réel — ici on suppose une liste
-        if isinstance(data, list):
+        # Format LabelMe : {"shapes": [{"label": "1_cents", ...}, ...], ...}
+        # Chaque shape = une pièce (label = valeur : 1_cents, 2_euros, etc.)
+        if isinstance(data, dict) and "shapes" in data:
+            nb_pieces = len(data["shapes"])
+        elif isinstance(data, list):
+            # Fallback : liste brute d'objets
             nb_pieces = len(data)
-        elif isinstance(data, dict) and "pieces" in data:
-            nb_pieces = len(data["pieces"])
         else:
-            # Fallback : si le format est différent, on met 0 et on avertit
             nb_pieces = 0
             print(f"[WARN] Format inconnu pour {fname}, nb_pieces mis à 0")
 
@@ -110,11 +113,32 @@ def charger_split(split_path="split.json"):
         return json.load(f)
 
 
+def filtrer_images_existantes(vt: dict, image_dir: str) -> dict:
+    """
+    Retire du dict vt toutes les entrées dont le fichier image est introuvable.
+    Évite les FileNotFoundError au moment du prétraitement.
+    """
+    extensions = [".jpg", ".jpeg", ".JPG", ".JPEG", ".png", ".PNG"]
+    vt_filtre = {}
+    for nom, nb in vt.items():
+        trouve = any(
+            os.path.exists(os.path.join(image_dir, nom + ext))
+            for ext in extensions
+        ) or os.path.exists(os.path.join(image_dir, nom))
+        if trouve:
+            vt_filtre[nom] = nb
+        else:
+            print(f"[SKIP] Image introuvable, ignorée : {nom}")
+    return vt_filtre
+
+
 if __name__ == "__main__":
     ANNOTATION_DIR = "base_annotations"
+    IMAGE_DIR = "base_images"
 
     vt = charger_verite_terrain(ANNOTATION_DIR)
-    print(f"{len(vt)} images trouvées, nb_pieces min={min(vt.values())}, max={max(vt.values())}")
+    vt = filtrer_images_existantes(vt, IMAGE_DIR)
+    print(f"{len(vt)} images utilisables, nb_pieces min={min(vt.values())}, max={max(vt.values())}")
 
     train, val, test = split_stratifie(vt, ratio_train=0.6, ratio_val=0.2, seed=42)
     sauvegarder_split(train, val, test, "split.json")
