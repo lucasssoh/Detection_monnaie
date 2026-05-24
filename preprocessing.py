@@ -76,6 +76,10 @@ def otsu_segmentation(image_array: np.ndarray) -> np.ndarray:
 
     seuil = trouver_seuil_otsu(image_array)
     binary = (image_array >= seuil).astype(np.uint8)
+    # Si plus de 50% de l'image est blanc → on a segmenté le fond, inverser
+    if binary.mean() > 0.5:
+        binary = 1 - binary
+
     return binary
 
 
@@ -235,3 +239,20 @@ def preprocess_dataset(
             print(f"[WARN] Erreur sur {path} : {e}")
             X.append([0, 0, 0.0, 0.0, 0.0])
     return np.array(X, dtype=np.float64)
+
+
+def debug_image(path, sigma=2, noyau=7, output="debug_binary.png"):
+    from PIL import Image as PILImage
+    img_array = load_image(path)
+    img_smooth = gaussian_filter(img_array.astype(np.float32), sigma=sigma).astype(np.uint8)
+    binary = otsu_segmentation(img_smooth)
+    binary = binary_fill_holes(binary).astype(np.uint8)
+    struct = np.ones((noyau, noyau))
+    binary = binary_opening(binary, structure=struct).astype(np.uint8)
+    
+    features = extract_features(binary)
+    print(f"Features : {features}")
+    print(f"  nb_pixels={features[0]}, nb_blobs={features[1]}, aire_moy={features[2]:.0f}")
+    
+    PILImage.fromarray(binary * 255).save(output)
+    print(f"Image binaire sauvegardée : {output}")
