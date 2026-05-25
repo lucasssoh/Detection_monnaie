@@ -50,14 +50,14 @@ Pour reproduire les résultats, il faut placer à la racine du projet :
 
 ### Étape 0 — Vérification des données
 
-Lance ce script en premier pour s'assurer que tout est en ordre.
+Lancer ce script en premier pour s'assurer que tout est en ordre.
 Il ne modifie rien, il lit et affiche uniquement.
 
 ```bash
 python diagnostic.py
 ```
 
-Ce que tu dois voir :
+Ce qu'on doit voir :
 - Toutes les annotations lues sans erreur
 - La distribution du nombre de pièces par image
 - La correspondance annotations ↔ images (aucune image introuvable)
@@ -72,7 +72,7 @@ python split_data.py
 
 Crée le fichier `split.json` qui répartit les images en trois groupes de manière **stratifiée** : chaque groupe contient la même proportion d'images par nombre de pièces. Ce fichier est généré une seule fois et ne doit pas être recréé, pour garantir la reproductibilité des résultats.
 
-> ⚠️ Si `split.json` existe déjà, `algo.py` le charge directement sans le recréer.
+> Si `split.json` existe déjà, `algo.py` le charge directement sans le recréer.
 
 ---
 
@@ -166,7 +166,6 @@ Les images sont réparties en trois groupes de façon **stratifiée par nombre d
 | **Validation** | 20 % (~35 images) | Réglage des hyperparamètres |
 | **Test** | 20 % (~35 images) | Évaluation finale — utilisé une seule fois |
 
-> **Règle absolue** : on ne consulte les résultats du test qu'une seule fois, après avoir fixé définitivement tous les hyperparamètres. Regarder le test pour ajuster le modèle invaliderait la mesure de généralisation.
 
 #### b. Recherche d'optimum — Grid Search
 
