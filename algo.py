@@ -12,7 +12,7 @@ Workflow (respecte strictement la règle du cours) :
          c. Évaluer sur val
     3. Sélectionner les meilleurs hyperparamètres (argmin MAE sur val)
     4. Réentraîner avec les meilleurs hyperparamètres sur train
-    5. Calculer les métriques finales UNE SEULE FOIS sur test
+    5. Calculer les métriques finales une seule fois sur test
 
 Règle absolue du cours :
     On ne touche au jeu de test qu'à l'étape 5.
